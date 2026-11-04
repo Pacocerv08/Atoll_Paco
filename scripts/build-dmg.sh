@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 # (iCloud/Drive/OneDrive en Documents), el sync le pega atributos extendidos a
 # los archivos y codesign falla con "resource fork ... detritus not allowed".
 DERIVED="$HOME/Library/Developer/Xcode/DerivedData/AtollPaco"
-APP="$DERIVED/Build/Products/Release/Atoll.app"
+APP="${DERIVED}/Build/Products/Release/Atoll.app"
 DMG="build/Atoll.dmg"
 
 if ! command -v xcodebuild >/dev/null 2>&1; then
@@ -45,27 +45,27 @@ xcodebuild build \
     -scheme DynamicIsland \
     -configuration Release \
     -destination "platform=macOS" \
-    -derivedDataPath "$DERIVED" \
+    -derivedDataPath "${DERIVED}" \
     -quiet \
     CODE_SIGN_IDENTITY="-" \
     CODE_SIGN_STYLE=Manual \
     DEVELOPMENT_TEAM=""
 
-if [ ! -d "$APP" ]; then
-    echo "❌ No se generó $APP. Revisa los errores de arriba."
+if [ ! -d "${APP}" ]; then
+    echo "❌ No se generó ${APP}. Revisa los errores de arriba."
     exit 1
 fi
 
-codesign --verify --verbose=1 "$APP" || echo "⚠️  codesign --verify se quejó; la app igual puede abrir."
+codesign --verify --verbose=1 "${APP}" || echo "⚠️  codesign --verify se quejó; la app igual puede abrir."
 
-echo "→ Armando $DMG…"
+echo "→ Armando ${DMG}…"
 STAGING="$(mktemp -d)"
-trap 'rm -rf "$STAGING"' EXIT
-ditto --norsrc --noextattr "$APP" "$STAGING/Atoll.app"
-ln -s /Applications "$STAGING/Applications"
-mkdir -p "$(dirname "$DMG")"
-rm -f "$DMG"
-hdiutil create -volname "Atoll" -srcfolder "$STAGING" -ov -format UDZO "$DMG" >/dev/null
+trap 'rm -rf "${STAGING}"' EXIT
+ditto --norsrc --noextattr "${APP}" "${STAGING}/Atoll.app"
+ln -s /Applications "${STAGING}/Applications"
+mkdir -p "$(dirname "${DMG}")"
+rm -f "${DMG}"
+hdiutil create -volname "Atoll" -srcfolder "${STAGING}" -ov -format UDZO "${DMG}" >/dev/null
 
-echo "✅ Listo: $DMG"
+echo "✅ Listo: ${DMG}"
 echo "   Ábrelo, arrastra Atoll a Aplicaciones y la primera vez ábrela con clic derecho → Abrir."
