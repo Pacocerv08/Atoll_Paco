@@ -20,6 +20,15 @@ if ! command -v xcodebuild >/dev/null 2>&1; then
     exit 1
 fi
 
+# Xcode 26+ ya no trae el compilador de Metal; SwiftTerm lo necesita para sus shaders.
+if ! xcrun metal --version >/dev/null 2>&1; then
+    echo "→ Falta el Metal Toolchain, bajándolo (una sola vez, tarda un rato)…"
+    xcodebuild -downloadComponent MetalToolchain || {
+        echo "❌ No se pudo bajar. Prueba: sudo xcodebuild -downloadComponent MetalToolchain"
+        exit 1
+    }
+fi
+
 if command -v git-lfs >/dev/null 2>&1; then
     echo "→ Bajando archivos de Git LFS (videos de AirPods)…"
     git lfs pull
