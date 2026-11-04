@@ -143,6 +143,7 @@ PrivateWorks
 *.sh
 !scripts/build-dmg.sh
 !scripts/tidal-credentials.sh
+!scripts/tidal-debug.sh
 comparison_report.json
 *.txt
 ANIMATION_DEBUG_GUIDE.md
