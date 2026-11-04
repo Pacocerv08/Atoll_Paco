@@ -11,7 +11,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-DERIVED="build/DerivedData"
+# Fuera del repo a propósito: si el repo vive en una carpeta sincronizada
+# (iCloud/Drive/OneDrive en Documents), el sync le pega atributos extendidos a
+# los archivos y codesign falla con "resource fork ... detritus not allowed".
+DERIVED="$HOME/Library/Developer/Xcode/DerivedData/AtollPaco"
 APP="$DERIVED/Build/Products/Release/Atoll.app"
 DMG="build/Atoll.dmg"
 
@@ -58,8 +61,9 @@ codesign --verify --verbose=1 "$APP" || echo "⚠️  codesign --verify se quej�
 echo "→ Armando $DMG…"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
-cp -R "$APP" "$STAGING/"
+ditto --norsrc --noextattr "$APP" "$STAGING/Atoll.app"
 ln -s /Applications "$STAGING/Applications"
+mkdir -p "$(dirname "$DMG")"
 rm -f "$DMG"
 hdiutil create -volname "Atoll" -srcfolder "$STAGING" -ov -format UDZO "$DMG" >/dev/null
 
