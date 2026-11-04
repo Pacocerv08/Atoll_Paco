@@ -291,11 +291,14 @@ class TerminalManager: ObservableObject {
         let shell = Defaults[.terminalShellPath]
         let execName = "-" + (shell as NSString).lastPathComponent  // login shell convention
 
+        // Atoll_Paco: arrancar en tu carpeta de usuario (~). Si no se pasa, el shell
+        // hereda el directorio de la app, que al abrirla desde Finder es "/".
         view.startProcess(
             executable: shell,
             args: [],
             environment: buildEnvironment(),
-            execName: execName
+            execName: execName,
+            currentDirectory: FileManager.default.homeDirectoryForCurrentUser.path
         )
         isProcessRunning = true
     }
@@ -631,6 +634,9 @@ class TerminalManager: ObservableObject {
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
         // Remove TERM_PROGRAM if set by a parent terminal
         env.removeValue(forKey: "TERM_PROGRAM")
+        // Atoll_Paco: que PWD coincida con el directorio inicial (~).
+        env["PWD"] = FileManager.default.homeDirectoryForCurrentUser.path
+        env.removeValue(forKey: "OLDPWD")
         return env.map { "\($0.key)=\($0.value)" }
     }
 }

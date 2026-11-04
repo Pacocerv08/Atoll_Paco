@@ -803,20 +803,15 @@ class MusicManager: ObservableObject {
         if hasContentChange {
             self.triggerFlipAnimation()
 
-            if artworkChanged, let artwork = state.artwork {
+            if state.bundleIdentifier == TidalArtworkResolver.tidalBundleIdentifier {
+                // Atoll_Paco: TIDAL tiene su propio flujo (portada HD desde la API de TIDAL).
+                self.handleTidalArtwork(state, artworkChanged: artworkChanged)
+            } else if artworkChanged, let artwork = state.artwork {
+                // Spotify, Apple Music, etc.: sin cambios, se quedan con su portada.
+                self.cancelTidalArtworkUpgrade()
                 self.updateArtwork(artwork)
-                // Atoll_Paco: solo para TIDAL; Spotify, Apple Music, etc. se quedan con su portada.
-                if state.bundleIdentifier == TidalArtworkResolver.tidalBundleIdentifier {
-                    self.upgradeTidalArtworkIfLowResolution(
-                        artwork,
-                        title: state.title,
-                        artist: state.artist,
-                        album: state.album
-                    )
-                } else {
-                    self.cancelTidalArtworkUpgrade()
-                }
             } else if state.artwork == nil {
+                self.cancelTidalArtworkUpgrade()
                 // Try to use app icon if no artwork but track changed
                 if let appIconImage = AppIconAsNSImage(for: state.bundleIdentifier) {
                     self.usingAppIconForArtwork = true
@@ -1097,39 +1092,112 @@ class MusicManager: ObservableObject {
         }
     }
 
-    /// Atoll_Paco: TIDAL de escritorio le pasa a macOS una portada de 150×150 px.
-    /// Si llega chica, se cambia por la del catálogo de TIDAL en alta resolución.
-    /// Ver TidalArtworkResolver. Solo se llama cuando la música viene de TIDAL.
+    // MARK: - Atoll_Paco: portada HD para TIDAL
+    //
+    // TIDAL de escritorio le pasa a macOS una portada de 150×150 px. Para TIDAL:
+    // - En cuanto cambia la canción se pide la portada HD a la API de TIDAL
+    //   (TidalArtworkResolver), sin esperar a la chica.
+    // - La chica NO se muestra mientras se busca: se queda la portada anterior y
+    //   se salta directo a la HD, sin el retraso de 0.4 s de updateAlbumArt.
+    // - Si la HD tarda más de `tidalFallbackDelay` o no se encuentra, se muestra
+    //   la chica para no quedarse con la portada de otra canción.
+    // Spotify, Apple Music y demás no pasan por aquí.
+
+    private static let tidalFallbackDelay: UInt64 = 1_500_000_000  // 1.5 s
+
     private var tidalArtworkTask: Task<Void, Never>?
+    private var tidalFallbackTask: Task<Void, Never>?
+    private var tidalArtworkKey: String?
+    private var tidalHDApplied = false
+    private var tidalFallbackFired = false
+    private var tidalPendingLowRes: Data?
 
     private func cancelTidalArtworkUpgrade() {
         tidalArtworkTask?.cancel()
         tidalArtworkTask = nil
+        tidalFallbackTask?.cancel()
+        tidalFallbackTask = nil
+        tidalArtworkKey = nil
+        tidalPendingLowRes = nil
     }
 
-    private func upgradeTidalArtworkIfLowResolution(_ data: Data, title: String, artist: String, album: String) {
-        cancelTidalArtworkUpgrade()
-        guard !title.isEmpty, !artist.isEmpty else { return }
+    @MainActor
+    private func handleTidalArtwork(_ state: PlaybackState, artworkChanged: Bool) {
+        let key = state.title + "\u{1F}" + state.artist
+        if key != tidalArtworkKey {
+            startTidalArtworkLookup(key: key, title: state.title, artist: state.artist, album: state.album)
+        }
 
-        tidalArtworkTask = Task.detached(priority: .utility) { [weak self] in
-            guard TidalArtworkResolver.isLowResolution(data) else { return }
-            guard let hdData = await TidalArtworkResolver.shared.artwork(title: title, artist: artist, album: album)
-            else { return }
+        guard artworkChanged, let artwork = state.artwork else { return }
 
-            // La portada chica se aplica con un retraso de ~0.4 s (updateAlbumArt). Si la HD
-            // ya estaba en caché podría llegar antes y la chica la pisaría; esperar un poco
-            // garantiza que la HD se aplique después y cancele la chica si sigue pendiente.
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            guard !Task.isCancelled else { return }
+        if TidalArtworkResolver.isLowResolution(artwork) {
+            // Se guarda por si la HD no llega; solo se muestra si ya se venció el tiempo.
+            tidalPendingLowRes = artwork
+            if tidalFallbackFired && !tidalHDApplied {
+                applyTidalFallback(key: key)
+            }
+        } else {
+            // TIDAL mandó una portada buena por su cuenta: se usa tal cual.
+            tidalHDApplied = true
+            tidalFallbackTask?.cancel()
+            updateArtwork(artwork)
+        }
+    }
 
-            await MainActor.run { [weak self] in
-                guard let self,
-                      self.songTitle == title,
-                      self.artistName == artist,
-                      let image = NSImage(data: hdData)
-                else { return }
+    @MainActor
+    private func startTidalArtworkLookup(key: String, title: String, artist: String, album: String) {
+        // La búsqueda anterior no se cancela: si termina, queda en caché (por si regresas
+        // a esa canción) y su resultado se ignora porque la llave ya no coincide.
+        tidalFallbackTask?.cancel()
+        tidalArtworkKey = key
+        tidalHDApplied = false
+        tidalFallbackFired = false
+        tidalPendingLowRes = nil
+
+        guard !title.isEmpty, !artist.isEmpty else {
+            tidalFallbackFired = true
+            return
+        }
+
+        tidalArtworkTask = Task { @MainActor [weak self] in
+            let hdData = await TidalArtworkResolver.shared.artwork(title: title, artist: artist, album: album)
+            guard !Task.isCancelled, let self, self.tidalArtworkKey == key else { return }
+
+            if let hdData, let image = NSImage(data: hdData) {
+                self.tidalHDApplied = true
+                self.tidalFallbackTask?.cancel()
                 self.usingAppIconForArtwork = false
-                self.updateAlbumArt(newAlbumArt: image)
+                self.applyAlbumArtImmediately(image)
+            } else {
+                self.applyTidalFallback(key: key)
+            }
+        }
+
+        tidalFallbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.tidalFallbackDelay)
+            guard !Task.isCancelled else { return }
+            self?.applyTidalFallback(key: key)
+        }
+    }
+
+    /// Muestra la portada chica de TIDAL si la HD no llegó (o no existe).
+    @MainActor
+    private func applyTidalFallback(key: String) {
+        guard tidalArtworkKey == key, !tidalHDApplied else { return }
+        tidalFallbackFired = true
+        guard let data = tidalPendingLowRes, let image = NSImage(data: data) else { return }
+        usingAppIconForArtwork = false
+        applyAlbumArtImmediately(image)
+    }
+
+    /// Como updateAlbumArt, pero sin el retraso de 0.4 s (y cancela cualquier cambio pendiente).
+    @MainActor
+    private func applyAlbumArtImmediately(_ image: NSImage) {
+        workItem?.cancel()
+        withAnimation(.smooth) {
+            self.albumArt = image
+            if Defaults[.coloredSpectrogram] {
+                self.calculateAverageColor()
             }
         }
     }

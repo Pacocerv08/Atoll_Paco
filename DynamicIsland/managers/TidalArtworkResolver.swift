@@ -78,7 +78,9 @@ actor TidalArtworkResolver {
               let data = await download(url),
               NSImage(data: data) != nil
         else {
-            misses.insert(key)
+            // Si se canceló (cambiaste de canción a medio camino) no es un "no existe":
+            // no se marca, para que la próxima vez se vuelva a intentar.
+            if !Task.isCancelled { misses.insert(key) }
             return nil
         }
 
