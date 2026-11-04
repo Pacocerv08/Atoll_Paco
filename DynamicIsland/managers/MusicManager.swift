@@ -805,6 +805,17 @@ class MusicManager: ObservableObject {
 
             if artworkChanged, let artwork = state.artwork {
                 self.updateArtwork(artwork)
+                // Atoll_Paco: solo para TIDAL; Spotify, Apple Music, etc. se quedan con su portada.
+                if state.bundleIdentifier == TidalArtworkResolver.tidalBundleIdentifier {
+                    self.upgradeTidalArtworkIfLowResolution(
+                        artwork,
+                        title: state.title,
+                        artist: state.artist,
+                        album: state.album
+                    )
+                } else {
+                    self.cancelTidalArtworkUpgrade()
+                }
             } else if state.artwork == nil {
                 // Try to use app icon if no artwork but track changed
                 if let appIconImage = AppIconAsNSImage(for: state.bundleIdentifier) {
@@ -1083,6 +1094,43 @@ class MusicManager: ObservableObject {
             liveStreamEdgeObservationCount = 0
             liveStreamCompletionObservationCount = 0
             liveStreamCompletionReleaseCount = 0
+        }
+    }
+
+    /// Atoll_Paco: TIDAL de escritorio le pasa a macOS una portada de 150×150 px.
+    /// Si llega chica, se cambia por la del catálogo de TIDAL en alta resolución.
+    /// Ver TidalArtworkResolver. Solo se llama cuando la música viene de TIDAL.
+    private var tidalArtworkTask: Task<Void, Never>?
+
+    private func cancelTidalArtworkUpgrade() {
+        tidalArtworkTask?.cancel()
+        tidalArtworkTask = nil
+    }
+
+    private func upgradeTidalArtworkIfLowResolution(_ data: Data, title: String, artist: String, album: String) {
+        cancelTidalArtworkUpgrade()
+        guard !title.isEmpty, !artist.isEmpty else { return }
+
+        tidalArtworkTask = Task.detached(priority: .utility) { [weak self] in
+            guard TidalArtworkResolver.isLowResolution(data) else { return }
+            guard let hdData = await TidalArtworkResolver.shared.artwork(title: title, artist: artist, album: album)
+            else { return }
+
+            // La portada chica se aplica con un retraso de ~0.4 s (updateAlbumArt). Si la HD
+            // ya estaba en caché podría llegar antes y la chica la pisaría; esperar un poco
+            // garantiza que la HD se aplique después y cancele la chica si sigue pendiente.
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run { [weak self] in
+                guard let self,
+                      self.songTitle == title,
+                      self.artistName == artist,
+                      let image = NSImage(data: hdData)
+                else { return }
+                self.usingAppIconForArtwork = false
+                self.updateAlbumArt(newAlbumArt: image)
+            }
         }
     }
 
