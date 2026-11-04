@@ -242,21 +242,36 @@ enum TidalAccessibility {
 
     private static let searchBudget = 12_000
 
+    /// Atoll_Paco: tope de profundidad para el árbol de accesibilidad de TIDAL.
+    private static let maxSearchDepth = 80
+
+    /// Atoll_Paco: búsqueda iterativa (BFS) en vez de recursiva. La versión
+    /// recursiva bajaba más de 3,600 niveles en el árbol de accesibilidad de
+    /// TIDAL (Electron) y reventaba el stack del hilo de la cola
+    /// `com.atoll.tidal.accessibility` (EXC_BAD_ACCESS / SIGBUS). `budget` sigue
+    /// limitando cuántos nodos se visitan en total.
     private static func firstDescendant(
         of element: AXUIElement,
         budget: inout Int,
         where matches: (AXUIElement) -> Bool
     ) -> AXUIElement? {
-        guard budget > 0 else { return nil }
-        budget -= 1
+        var queue: [(element: AXUIElement, depth: Int)] = [(element, 0)]
+        var index = 0
 
-        if matches(element) { return element }
-        guard let children = attribute(element, kAXChildrenAttribute) as? [AXUIElement] else {
-            return nil
-        }
-        for child in children {
-            if let found = firstDescendant(of: child, budget: &budget, where: matches) {
-                return found
+        while index < queue.count {
+            guard budget > 0 else { return nil }
+            budget -= 1
+
+            let (current, depth) = queue[index]
+            index += 1
+
+            if matches(current) { return current }
+            guard depth < maxSearchDepth,
+                  let children = attribute(current, kAXChildrenAttribute) as? [AXUIElement] else {
+                continue
+            }
+            for child in children {
+                queue.append((child, depth + 1))
             }
         }
         return nil
