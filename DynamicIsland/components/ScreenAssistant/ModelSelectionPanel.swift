@@ -123,11 +123,11 @@ struct ModelSelectionView: View {
     @State private var enableThinking: Bool = Defaults[.enableThinkingMode]
     
     // API Keys
-    @State private var geminiApiKey: String = Defaults[.geminiApiKey]
-    @State private var openaiApiKey: String = Defaults[.openaiApiKey]
-    @State private var claudeApiKey: String = Defaults[.claudeApiKey]
+    @State private var geminiApiKey: String = APIKeyStore[.gemini]
+    @State private var openaiApiKey: String = APIKeyStore[.openai]
+    @State private var claudeApiKey: String = APIKeyStore[.claude]
     @State private var localEndpoint: String = Defaults[.localModelEndpoint]
-    @State private var groqApiKey: String = Defaults[.groqApiKey]
+    @State private var groqApiKey: String = APIKeyStore[.groq]
     
     @State private var showingApiKeyAlert = false
     
@@ -312,11 +312,11 @@ struct ModelSelectionView: View {
         ensureValidModelSelection()
         enableThinking = Defaults[.enableThinkingMode]
         
-        geminiApiKey = Defaults[.geminiApiKey]
-        openaiApiKey = Defaults[.openaiApiKey]
-        claudeApiKey = Defaults[.claudeApiKey]
+        geminiApiKey = APIKeyStore[.gemini]
+        openaiApiKey = APIKeyStore[.openai]
+        claudeApiKey = APIKeyStore[.claude]
         localEndpoint = Defaults[.localModelEndpoint]
-        groqApiKey = Defaults[.groqApiKey]
+        groqApiKey = APIKeyStore[.groq]
     }
     
     private func saveConfiguration() {
@@ -326,11 +326,11 @@ struct ModelSelectionView: View {
         Defaults[.selectedAIModel] = selectedModel
         Defaults[.enableThinkingMode] = enableThinking
         
-        Defaults[.geminiApiKey] = geminiApiKey
-        Defaults[.openaiApiKey] = openaiApiKey
-        Defaults[.claudeApiKey] = claudeApiKey
+        APIKeyStore[.gemini] = geminiApiKey
+        APIKeyStore[.openai] = openaiApiKey
+        APIKeyStore[.claude] = claudeApiKey
         Defaults[.localModelEndpoint] = localEndpoint
-        Defaults[.groqApiKey] = groqApiKey
+        APIKeyStore[.groq] = groqApiKey
         
         closePanel()
         

@@ -97,10 +97,33 @@ final class ExtensionRPCServer {
         .hostPort(host: host, port: NWEndpoint.Port(integerLiteral: rpcPort))
     }
 
+    /// Atoll_Paco: `nonisolated` a propósito; Network.framework lo llama desde su
+    /// propia cola, no desde el main actor.
+    nonisolated private static func rejectBrowserHandshakes(
+        _ subprotocols: [String],
+        _ additionalHeaders: [(name: String, value: String)]
+    ) -> NWProtocolWebSocket.Response {
+        let hasOrigin = additionalHeaders.contains {
+            $0.name.caseInsensitiveCompare("Origin") == .orderedSame
+        }
+        return NWProtocolWebSocket.Response(
+            status: hasOrigin ? .reject : .accept,
+            subprotocol: nil,
+            additionalHeaders: nil
+        )
+    }
+
     private func makeListener(boundTo host: NWEndpoint.Host) -> NWListener? {
         let params = NWParameters(tls: nil)
         let wsOptions = NWProtocolWebSocket.Options()
         wsOptions.autoReplyPing = true
+        // Atoll_Paco: rechaza el handshake si trae header `Origin`. Los navegadores
+        // siempre lo mandan y los clientes nativos no, así que una página web
+        // abierta en tu navegador ya no puede hablarle a 127.0.0.1:9020.
+        wsOptions.setClientRequestHandler(
+            DispatchQueue.global(qos: .userInitiated),
+            handler: Self.rejectBrowserHandshakes
+        )
         params.defaultProtocolStack.applicationProtocols.insert(wsOptions, at: 0)
         // Without this the listener takes the wildcard address and the port is
         // reachable from the local network.

@@ -8652,7 +8652,8 @@ struct ScreenAssistantSettings: View {
     @ObservedObject var screenAssistantManager = ScreenAssistantManager.shared
     @Default(.enableScreenAssistant) var enableScreenAssistant
     @Default(.screenAssistantDisplayMode) var screenAssistantDisplayMode
-    @Default(.geminiApiKey) var geminiApiKey
+    // Atoll_Paco: la key vive en el Keychain (APIKeyStore), no en UserDefaults.
+    @State private var geminiApiKey: String = APIKeyStore[.gemini]
     @State private var apiKeyText = ""
     @State private var showingApiKey = false
 
@@ -8690,7 +8691,8 @@ struct ScreenAssistantSettings: View {
                             if showingApiKey {
                                 showingApiKey = false
                                 if !apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Defaults[.geminiApiKey] = apiKeyText
+                                    APIKeyStore[.gemini] = apiKeyText
+                                    geminiApiKey = APIKeyStore[.gemini]
                                 }
                                 apiKeyText = ""
                             } else {
@@ -8718,7 +8720,8 @@ struct ScreenAssistantSettings: View {
                                 Spacer()
 
                                 Button("Save") {
-                                    Defaults[.geminiApiKey] = apiKeyText
+                                    APIKeyStore[.gemini] = apiKeyText
+                                    geminiApiKey = APIKeyStore[.gemini]
                                     showingApiKey = false
                                     apiKeyText = ""
                                 }

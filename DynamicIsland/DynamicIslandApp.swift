@@ -36,11 +36,11 @@ struct DynamicNotchApp: App {
     private let updaterDelegate = AtollUpdaterDelegate()
 
     init() {
-        // Skip Sparkle's launch-time update check during UI testing.
-        // The AtollUpdaterDelegate overrides the feed URL at runtime
-        // based on the user's selected update channel.
+        // Atoll_Paco (fork personal): Sparkle nunca arranca. Si arrancara, bajaría
+        // la versión oficial de Atoll y reemplazaría este build con sus cambios.
+        // Para actualizar: `git fetch upstream && git merge upstream/dev`.
         updaterController = SPUStandardUpdaterController(
-            startingUpdater: !AppRuntimeEnvironment.isUITesting,
+            startingUpdater: false,
             updaterDelegate: updaterDelegate, userDriverDelegate: nil)
 
         // Initialize the settings window controller with the updater controller
@@ -693,6 +693,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
     
+    private func updateExtensionRPCServer(enabled: Bool) {
+        if enabled {
+            extensionRPCServer.start()
+        } else {
+            extensionRPCServer.stop()
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let userInfo: [String: Any] = [
             AtollDistributedNotifications.UserInfoKey.sourcePID: NSNumber(value: ProcessInfo.processInfo.processIdentifier)
@@ -706,8 +714,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         LockScreenLiveActivityWindowManager.shared.configure(viewModel: vm)
         LockScreenManager.shared.configure(viewModel: vm)
-        extensionXPCServiceHost.start()
-        extensionRPCServer.start()
+        // Atoll_Paco: el listener XPC nunca arranca. Necesita el entitlement
+        // `mach-services`, que se quitó porque con firma ad-hoc macOS mata la app,
+        // y sin ese entitlement arrancar el listener también la tumba.
+        // El servidor RPC (WebSocket en 127.0.0.1:9020) solo corre si las
+        // extensiones de terceros están prendidas en Settings.
+        updateExtensionRPCServer(enabled: Defaults[.enableThirdPartyExtensions])
+        Defaults.publisher(.enableThirdPartyExtensions, options: []).sink { [weak self] change in
+            Task { @MainActor [weak self] in
+                self?.updateExtensionRPCServer(enabled: change.newValue)
+            }
+        }.store(in: &cancellables)
         
         // Migrate legacy progress bar settings
         Defaults.Keys.migrateProgressBarStyle()

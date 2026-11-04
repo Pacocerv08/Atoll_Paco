@@ -1298,7 +1298,7 @@ extension Defaults.Keys {
     static let cpuTemperatureUnit = Key<LockScreenWeatherTemperatureUnit>("cpuTemperatureUnit", default: .matchingSystemPreference)
     
     // MARK: Terminal Feature
-    static let enableTerminalFeature = Key<Bool>("enableTerminalFeature", default: false)
+    static let enableTerminalFeature = Key<Bool>("enableTerminalFeature", default: true)
     static let terminalShellPath = Key<String>("terminalShellPath", default: "/bin/zsh")
     static let terminalFontFamily = Key<String>("terminalFontFamily", default: "")
     static let terminalFontSize = Key<Double>("terminalFontSize", default: 12.0)
@@ -1312,7 +1312,7 @@ extension Defaults.Keys {
     static let terminalBackgroundColor = Key<Color>("terminalBackgroundColor", default: .black)
     static let terminalForegroundColor = Key<Color>("terminalForegroundColor", default: .white)
     static let terminalCursorColor = Key<Color>("terminalCursorColor", default: Color(.selectedControlColor))
-    static let terminalStickyMode = Key<Bool>("terminalStickyMode", default: false)
+    static let terminalStickyMode = Key<Bool>("terminalStickyMode", default: true)
     
     // MARK: Timer Feature
     static let enableTimerFeature = Key<Bool>("enableTimerFeature", default: true)
@@ -1378,20 +1378,20 @@ extension Defaults.Keys {
     static let localModelEndpoint = Key<String>("localModelEndpoint", default: "http://localhost:11434")
 
     // MARK: Third-Party Extensions
-    static let enableThirdPartyExtensions = Key<Bool>("enableThirdPartyExtensions", default: true)
+    static let enableThirdPartyExtensions = Key<Bool>("enableThirdPartyExtensions", default: false)
     static let enableExtensionLiveActivities = Key<Bool>("enableExtensionLiveActivities", default: true)
     static let enableExtensionLockScreenWidgets = Key<Bool>("enableExtensionLockScreenWidgets", default: true)
     static let enableExtensionNotchExperiences = Key<Bool>("enableExtensionNotchExperiences", default: true)
     static let enableExtensionNotchTabs = Key<Bool>("enableExtensionNotchTabs", default: true)
     static let enableExtensionNotchMinimalisticOverrides = Key<Bool>("enableExtensionNotchMinimalisticOverrides", default: true)
-    static let enableExtensionNotchInteractiveWebViews = Key<Bool>("enableExtensionNotchInteractiveWebViews", default: true)
+    static let enableExtensionNotchInteractiveWebViews = Key<Bool>("enableExtensionNotchInteractiveWebViews", default: false)
     static let extensionAuthorizationEntries = Key<[ExtensionAuthorizationEntry]>("extensionAuthorizationEntries", default: [])
     static let extensionRateLimitRecords = Key<[ExtensionRateLimitRecord]>("extensionRateLimitRecords", default: [])
     static let extensionDiagnosticsLoggingEnabled = Key<Bool>("extensionDiagnosticsLoggingEnabled", default: true)
     static let extensionLiveActivityCapacity = Key<Int>("extensionLiveActivityCapacity", default: 4)
     static let extensionLockScreenWidgetCapacity = Key<Int>("extensionLockScreenWidgetCapacity", default: 4)
     static let extensionNotchExperienceCapacity = Key<Int>("extensionNotchExperienceCapacity", default: 2)
-    static let enableExtensionFileSharing = Key<Bool>("enableExtensionFileSharing", default: true)
+    static let enableExtensionFileSharing = Key<Bool>("enableExtensionFileSharing", default: false)
     
     // MARK: Keyboard Shortcuts
     static let enableShortcuts = Key<Bool>("enableShortcuts", default: true)
@@ -1486,7 +1486,7 @@ extension Defaults.Keys {
     // MARK: Lock Screen Features
     static let enableLockScreenLiveActivity = Key<Bool>("enableLockScreenLiveActivity", default: true)
     static let lockScreenLiveActivityIconStyle = Key<LockScreenLiveActivityIconStyle>("lockScreenLiveActivityIconStyle", default: .lock)
-    static let enableLockSounds = Key<Bool>("enableLockSounds", default: true)
+    static let enableLockSounds = Key<Bool>("enableLockSounds", default: false)
     
     // MARK: Caps Lock Indicator
     static let enableCapsLockIndicator = Key<Bool>("enableCapsLockIndicator", default: true)

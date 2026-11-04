@@ -54,13 +54,8 @@ final class ExtensionXPCService: NSObject, @preconcurrency AtollXPCServiceProtoc
 
             let entry = self.authorizationManager.ensureEntryExists(bundleIdentifier: self.bundleIdentifier, appName: self.resolvedApplicationName())
 
-            if entry.status == .pending {
-                self.authorizationManager.authorize(bundleIdentifier: self.bundleIdentifier, appName: self.resolvedApplicationName())
-                self.host?.notifyAuthorizationChange(bundleIdentifier: self.bundleIdentifier, isAuthorized: true)
-                reply(true, nil)
-                return
-            }
-
+            // Atoll_Paco: sin autorización automática; las apps "pending" se
+            // aprueban a mano en Settings → Extensions.
             reply(entry.isAuthorized, entry.isAuthorized ? nil : ExtensionValidationError.unauthorized.asNSError)
         }
     }

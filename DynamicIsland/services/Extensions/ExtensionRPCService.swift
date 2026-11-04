@@ -151,11 +151,15 @@ final class ExtensionRPCService {
             return RPCSuccessResponse(result: ["authorized": .bool(true)], id: id)
         }
 
-        // Auto-authorize for now (user can revoke in settings)
-        authorizationManager.authorize(bundleIdentifier: bi, appName: bi)
-        logDiagnostics("Authorized RPC client \(bi)")
+        // Atoll_Paco: ya no se autoriza solo. Cualquier proceso puede decir el
+        // bundleIdentifier que quiera, así que la app queda "pending" hasta que
+        // la apruebes a mano en Settings → Extensions.
+        logDiagnostics("RPC client \(bi) is \(entry.status.rawValue); waiting for user approval in Settings")
 
-        return RPCSuccessResponse(result: ["authorized": .bool(true)], id: id)
+        return RPCSuccessResponse(result: [
+            "authorized": .bool(false),
+            "status": .string(entry.status.rawValue)
+        ], id: id)
     }
 
     private func handleCheckAuthorization(params: RPCParams?, id: String) -> Codable {
@@ -543,22 +547,12 @@ final class ExtensionRPCService {
         var newItems: [ShelfItem] = []
         var newItemIDs: [RPCValue] = []
 
-        // Handle file paths
-        if let pathsValue = params?["paths"],
-           case .array(let pathArray) = pathsValue {
-            for pathValue in pathArray {
-                guard let path = pathValue.stringValue else { continue }
-                let url = URL(fileURLWithPath: path)
-                guard FileManager.default.fileExists(atPath: path) else { continue }
-                if let bookmark = try? Bookmark(url: url) {
-                    let item = ShelfItem(
-                        kind: .file(bookmark: bookmark.data),
-                        cachedPath: url.standardizedFileURL.path
-                    )
-                    newItems.append(item)
-                    newItemIDs.append(.string(item.id.uuidString))
-                }
-            }
+        // Atoll_Paco: ya no se aceptan rutas ("paths"). Con eso una extensión
+        // podía meter cualquier archivo tuyo al Shelf (ej. ~/.ssh/id_ed25519) y
+        // luego leerlo con atoll.getShelfItemData. Si una extensión quiere
+        // compartir un archivo, que mande sus bytes en "files".
+        if params?["paths"] != nil {
+            logDiagnostics("RPC: addFilesToShelf ignored 'paths' from \(bundleIdentifier)")
         }
 
         // Handle base64-encoded file data
@@ -570,10 +564,18 @@ final class ExtensionRPCService {
                       let fileName = fileObj["fileName"]?.stringValue,
                       let fileData = Data(base64Encoded: dataStr) else { continue }
 
+                // Atoll_Paco: el nombre viene del cliente. Antes "../../x" escribía
+                // fuera de la carpeta temporal (path traversal). Ahora solo se usa
+                // el último componente y cada archivo va en su propia subcarpeta.
+                let safeName = (fileName as NSString).lastPathComponent
+                guard !safeName.isEmpty, safeName != ".", safeName != ".." else { continue }
+
                 let tempDir = FileManager.default.temporaryDirectory
                     .appendingPathComponent("AtollExtensionFiles", isDirectory: true)
+                    .appendingPathComponent(UUID().uuidString, isDirectory: true)
                 try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-                let fileURL = tempDir.appendingPathComponent(fileName)
+                let fileURL = tempDir.appendingPathComponent(safeName, isDirectory: false)
+                guard fileURL.standardizedFileURL.deletingLastPathComponent().path == tempDir.standardizedFileURL.path else { continue }
                 guard (try? fileData.write(to: fileURL)) != nil else { continue }
 
                 if let bookmark = try? Bookmark(url: fileURL) {
