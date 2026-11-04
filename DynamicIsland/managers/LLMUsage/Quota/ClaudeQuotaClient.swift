@@ -12,9 +12,6 @@ struct ClaudeQuotaClient {
     let session: URLSession
     init(session: URLSession = URLSession(configuration: .ephemeral)) { self.session = session }
 
-    private static let clientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-    private static let refreshScope = "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
-    private static let refreshSkewMs: Int64 = 5 * 60 * 1000
 
     fileprivate struct CredentialFile: Decodable, Sendable {
         struct OAuth: Decodable, Sendable {
@@ -23,12 +20,6 @@ struct ClaudeQuotaClient {
             let expiresAt: Int64
         }
         let claudeAiOauth: OAuth
-    }
-
-    private struct RefreshResponse: Decodable {
-        let accessToken: String
-        let refreshToken: String
-        let expiresIn: Int
     }
 
     private enum ResetsAt: Decodable {
@@ -99,29 +90,16 @@ struct ClaudeQuotaClient {
         return parsed.claudeAiOauth
     }
 
+    // Atoll_Paco: ya no se renueva el token. La versión original pedía un token
+    // nuevo pero no lo guardaba de regreso, y como el refresh token viejo queda
+    // invalidado, Claude Code se quedaba sin sesión. Ahora solo se usa el token
+    // vigente; si expiró se vuelve a leer del archivo/Keychain (Claude Code lo
+    // renueva solo) y si sigue expirado no se muestra el límite.
     private func validAccessToken(_ creds: CredentialFile.OAuth) async -> String? {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        guard creds.expiresAt - nowMs <= Self.refreshSkewMs else { return creds.accessToken }
-        var request = URLRequest(url: URL(string: "https://platform.claude.com/v1/oauth/token")!)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = [
-            "grant_type": "refresh_token",
-            "refresh_token": creds.refreshToken,
-            "client_id": Self.clientID,
-            "scope": Self.refreshScope
-        ]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        guard let (data, response) = try? await session.data(for: request),
-              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            return creds.accessToken
-        }
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        guard let refreshed = try? decoder.decode(RefreshResponse.self, from: data) else { return creds.accessToken }
-        let expiresAt = nowMs + Int64(refreshed.expiresIn) * 1000
-        let updated = CredentialFile.OAuth(accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken, expiresAt: expiresAt)
-        await ClaudeCredentialStore.shared.set(updated)
-        return refreshed.accessToken
+        if creds.expiresAt > nowMs { return creds.accessToken }
+        guard let fresh = Self.loadCredentialsFromSource(), fresh.expiresAt > nowMs else { return nil }
+        await ClaudeCredentialStore.shared.set(fresh)
+        return fresh.accessToken
     }
 }

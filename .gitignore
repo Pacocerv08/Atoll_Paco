@@ -141,6 +141,7 @@ PrivateWorks
 *.py
 !tests/test_privacy_configuration.py
 *.sh
+!scripts/build-dmg.sh
 comparison_report.json
 *.txt
 ANIMATION_DEBUG_GUIDE.md

@@ -28,6 +28,8 @@ final class ExtensionRPCServer {
     static let shared = ExtensionRPCServer()
 
     private var listener: NWListener?
+    /// Atoll_Paco: evita que el reintento automático lo vuelva a prender después de stop().
+    private var shouldRun = false
     private var connections: [UUID: RPCClientConnection] = [:]
     private var shelfSubscribers: Set<String> = [] // bundleIdentifiers subscribed to shelf events
     private let port: UInt16 = 9020
@@ -40,6 +42,7 @@ final class ExtensionRPCServer {
     // MARK: - Lifecycle
 
     func start() {
+        shouldRun = true
         guard listener == nil else {
             logDiagnostics("RPC server already running")
             return
@@ -48,10 +51,27 @@ final class ExtensionRPCServer {
         let params = NWParameters(tls: nil)
         let wsOptions = NWProtocolWebSocket.Options()
         wsOptions.autoReplyPing = true
+        // Atoll_Paco: rechaza el handshake si trae header `Origin`. Los navegadores
+        // siempre lo mandan y los clientes nativos no, así que una página web
+        // abierta en tu navegador no puede hablarle a localhost:9020.
+        wsOptions.setClientRequestHandler(
+            DispatchQueue.global(qos: .userInitiated),
+            handler: Self.rejectBrowserHandshakes
+        )
         params.defaultProtocolStack.applicationProtocols.insert(wsOptions, at: 0)
+        // Atoll_Paco (portado de upstream/dev): sin esto el listener toma la
+        // dirección comodín y el puerto queda expuesto a toda tu red local
+        // (cualquiera en el mismo WiFi podía usar la API de extensiones).
+        params.requiredLocalEndpoint = .hostPort(
+            host: .ipv4(.loopback),
+            port: NWEndpoint.Port(integerLiteral: port)
+        )
+        params.allowLocalEndpointReuse = true
 
         do {
-            listener = try NWListener(using: params, on: NWEndpoint.Port(integerLiteral: port))
+            // El puerto ya va en `requiredLocalEndpoint`; pasarlo también en `on:`
+            // hace que NWListener lo rechace.
+            listener = try NWListener(using: params)
         } catch {
             Logger.log("Failed to create RPC listener: \(error.localizedDescription)", category: .extensions)
             return
@@ -73,6 +93,7 @@ final class ExtensionRPCServer {
     }
 
     func stop() {
+        shouldRun = false
         listener?.cancel()
         listener = nil
         for (_, conn) in connections {
@@ -162,8 +183,9 @@ final class ExtensionRPCServer {
             Logger.log("RPC server failed: \(error.localizedDescription)", category: .extensions)
             // Attempt restart after delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-                self?.listener = nil
-                self?.start()
+                guard let self, self.shouldRun else { return }
+                self.listener = nil
+                self.start()
             }
         case .cancelled:
             logDiagnostics("RPC server listener cancelled")
@@ -173,6 +195,17 @@ final class ExtensionRPCServer {
     }
 
     private func handleNewConnection(_ nwConnection: NWConnection) {
+        // Atoll_Paco (portado de upstream/dev): el listener ya está pegado a
+        // loopback; si algo llega de otro lado, se corta antes de leer un byte.
+        guard Self.isLoopback(nwConnection.endpoint) else {
+            Logger.log(
+                "Refused an RPC connection from \(nwConnection.endpoint) — this server is local-only",
+                category: .extensions
+            )
+            nwConnection.cancel()
+            return
+        }
+
         let connID = UUID()
         let clientConn = RPCClientConnection(
             id: connID,
@@ -190,6 +223,48 @@ final class ExtensionRPCServer {
         nwConnection.start(queue: queue)
         receiveMessage(connID: connID)
         logDiagnostics("RPC client connected (id: \(connID.uuidString.prefix(8)))")
+    }
+
+    static func isLoopback(_ endpoint: NWEndpoint) -> Bool {
+        switch endpoint {
+        case .hostPort(let host, _):
+            return isLoopback(host)
+        case .unix:
+            return true
+        default:
+            return false
+        }
+    }
+
+    static func isLoopback(_ host: NWEndpoint.Host) -> Bool {
+        switch host {
+        case .ipv4(let address):
+            return address.isLoopback
+        case .ipv6(let address):
+            // `::ffff:127.0.0.1` llega por un socket dual-stack y sí es loopback.
+            if let mapped = address.asIPv4 { return mapped.isLoopback }
+            return address.isLoopback
+        case .name(let name, _):
+            return name == "localhost" || name == "localhost."
+        @unknown default:
+            return false
+        }
+    }
+
+    /// Atoll_Paco: `nonisolated` a propósito; Network.framework lo llama desde su
+    /// propia cola, no desde el main actor.
+    nonisolated private static func rejectBrowserHandshakes(
+        _ subprotocols: [String],
+        _ additionalHeaders: [(name: String, value: String)]
+    ) -> NWProtocolWebSocket.Response {
+        let hasOrigin = additionalHeaders.contains {
+            $0.name.caseInsensitiveCompare("Origin") == .orderedSame
+        }
+        return NWProtocolWebSocket.Response(
+            status: hasOrigin ? .reject : .accept,
+            subprotocol: nil,
+            additionalHeaders: nil
+        )
     }
 
     private func handleConnectionState(connID: UUID, state: NWConnection.State) {
