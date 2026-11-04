@@ -89,8 +89,14 @@ if code != 200:
     print("   ❌", body[:600].decode(errors="replace"))
     raise SystemExit(1)
 doc = json.loads(body)
-rel = ((doc.get("data") or {}).get("relationships") or {}).get("tracks", {}).get("data") or []
+data = doc.get("data")
+resources = data if isinstance(data, list) else ([data] if data else [])
+print(f"   data es {'lista' if isinstance(data, list) else type(data).__name__} con {len(resources)} recurso(s)")
+rel = [t for r in resources for t in (((r.get("relationships") or {}).get("tracks") or {}).get("data") or [])]
 inc = {r["id"]: r for r in doc.get("included", []) if r.get("type") == "tracks"}
+if not rel:
+    rel = [{"id": r["id"]} for r in doc.get("included", []) if r.get("type") == "tracks"]
+    print("   (sin linkage en relationships; usando included)")
 print(f"   {len(rel)} tracks en relationships, {len(inc)} en included")
 for t in rel[:6]:
     print("   -", t["id"], (inc.get(t["id"], {}).get("attributes") or {}).get("title"))

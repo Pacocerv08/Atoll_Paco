@@ -150,8 +150,20 @@ actor TidalArtworkResolver {
             token: token
         ) else { return nil }
 
-        let rankedIDs = Self.relationshipIDs(search["data"], "tracks")
+        // `data` viene como lista de searchResults (API 2026); antes era un solo objeto.
+        var rankedIDs: [String]
+        if let resources = search["data"] as? [[String: Any]] {
+            rankedIDs = resources.flatMap { Self.relationshipIDs($0, "tracks") }
+        } else {
+            rankedIDs = Self.relationshipIDs(search["data"], "tracks")
+        }
         let includedTracks = Self.included(search, type: "tracks")
+        if rankedIDs.isEmpty {
+            // Respaldo: sin linkage en la relación, usar los tracks incluidos en el orden recibido.
+            rankedIDs = ((search["included"] as? [[String: Any]]) ?? [])
+                .filter { $0["type"] as? String == "tracks" }
+                .compactMap { $0["id"] as? String }
+        }
         let wantedTitle = Self.canonicalTitle(title)
 
         let candidates = rankedIDs.filter { id in
