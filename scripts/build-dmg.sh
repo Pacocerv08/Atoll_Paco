@@ -39,7 +39,20 @@ else
     echo "⚠️  No tienes git-lfs (brew install git-lfs). Las animaciones .mov pueden salir rotas."
 fi
 
-echo "→ Compilando (Release, firma ad-hoc)… esto tarda unos minutos la primera vez."
+# Firma: si existe el certificado propio (scripts/setup-signing.sh), se usa ese para
+# que macOS reconozca la app entre builds (Accesibilidad y llavero no se vuelven a
+# pedir). Si no, ad-hoc.
+SIGN_NAME="Atoll Paco Local"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"${SIGN_NAME}\""; then
+    SIGN_IDENTITY="${SIGN_NAME}"
+    echo "→ Firmando con el certificado \"${SIGN_NAME}\"."
+else
+    SIGN_IDENTITY="-"
+    echo "⚠️  Firma ad-hoc: macOS te volverá a pedir permisos tras cada build."
+    echo "   Para evitarlo, corre una vez: ./scripts/setup-signing.sh"
+fi
+
+echo "→ Compilando (Release)… esto tarda unos minutos la primera vez."
 xcodebuild build \
     -project DynamicIsland.xcodeproj \
     -scheme DynamicIsland \
@@ -47,7 +60,7 @@ xcodebuild build \
     -destination "platform=macOS" \
     -derivedDataPath "${DERIVED}" \
     -quiet \
-    CODE_SIGN_IDENTITY="-" \
+    CODE_SIGN_IDENTITY="${SIGN_IDENTITY}" \
     CODE_SIGN_STYLE=Manual \
     DEVELOPMENT_TEAM=""
 
