@@ -2,7 +2,8 @@
 # Atoll_Paco: compila la app en Release con firma ad-hoc (sin cuenta de Apple
 # Developer) y arma build/Atoll.dmg para instalarla en tu Mac.
 #
-# Uso:  ./scripts/build-dmg.sh
+# Uso:  ./scripts/build-dmg.sh             (arma build/Atoll.dmg)
+#       ./scripts/build-dmg.sh --instalar  (además la copia a /Applications y la abre)
 #
 # La primera vez que abras la app: clic derecho → Abrir (es firma ad-hoc,
 # Gatekeeper no la reconoce). O: xattr -dr com.apple.quarantine /Applications/Atoll.app
@@ -14,7 +15,17 @@ cd "$(dirname "$0")/.."
 # Fuera del repo a propósito: si el repo vive en una carpeta sincronizada
 # (iCloud/Drive/OneDrive en Documents), el sync le pega atributos extendidos a
 # los archivos y codesign falla con "resource fork ... detritus not allowed".
-DERIVED="$HOME/Library/Developer/Xcode/DerivedData/AtollPaco"
+# Termina en .noindex para que Spotlight/Apps no la indexen: si no, la copia del
+# build aparece como una segunda "Atoll" junto a la de /Applications.
+DERIVED="$HOME/Library/Developer/Xcode/DerivedData/AtollPaco.noindex"
+OLD_DERIVED="$HOME/Library/Developer/Xcode/DerivedData/AtollPaco"
+INSTALL=false
+[ "${1:-}" = "--instalar" ] && INSTALL=true
+
+if [ -d "${OLD_DERIVED}" ]; then
+    echo "→ Borrando el build viejo indexado (${OLD_DERIVED})…"
+    rm -rf "${OLD_DERIVED}"
+fi
 APP="${DERIVED}/Build/Products/Release/Atoll.app"
 DMG="build/Atoll.dmg"
 
@@ -81,4 +92,28 @@ rm -f "${DMG}"
 hdiutil create -volname "Atoll" -srcfolder "${STAGING}" -ov -format UDZO "${DMG}" >/dev/null
 
 echo "✅ Listo: ${DMG}"
-echo "   Ábrelo, arrastra Atoll a Aplicaciones y la primera vez ábrela con clic derecho → Abrir."
+
+if [ "${INSTALL}" = true ]; then
+    BUNDLE_ID="$(defaults read "${APP}/Contents/Info" CFBundleIdentifier)"
+    DEST="/Applications/Atoll.app"
+    if [ -d "${DEST}" ]; then
+        DEST_ID="$(defaults read "${DEST}/Contents/Info" CFBundleIdentifier 2>/dev/null || true)"
+        if [ "${DEST_ID}" != "${BUNDLE_ID}" ]; then
+            echo "❌ ${DEST} es otra app (${DEST_ID:-desconocida}), no tu fork. No la toco."
+            echo "   Si es la Atoll oficial y no la usas, mándala a la papelera y vuelve a correr."
+            exit 1
+        fi
+        echo "→ Cerrando Atoll…"
+        osascript -e "tell application id \"${BUNDLE_ID}\" to quit" >/dev/null 2>&1 || true
+        sleep 1
+        rm -rf "${DEST}"
+    fi
+    echo "→ Instalando en ${DEST}…"
+    ditto --norsrc --noextattr "${APP}" "${DEST}"
+    xattr -dr com.apple.quarantine "${DEST}" 2>/dev/null || true
+    open "${DEST}"
+    echo "✅ Atoll instalada y abierta."
+else
+    echo "   Ábrelo, arrastra Atoll a Aplicaciones y la primera vez ábrela con clic derecho → Abrir."
+    echo "   (O la próxima vez usa: ./scripts/build-dmg.sh --instalar)"
+fi
